@@ -342,6 +342,15 @@ export default function App() {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="https://writecn.fun"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex touch-manipulation items-center rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 ring-1 ring-slate-700/40 hover:bg-slate-700"
+                title="Open writecn.fun"
+              >
+                writecn.fun
+              </a>
               <button
                 type="button"
                 onClick={restart}

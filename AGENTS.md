@@ -4,6 +4,7 @@
 
 - React + TypeScript + Vite, compiled to static `dist/`
 - Tailwind CSS v4 via `@tailwindcss/vite` (see `vite.config.ts`)
+- Header links: includes a shortcut to `writecn.fun`.
 - Local:
   - `npm install`
   - `npm run dev`
