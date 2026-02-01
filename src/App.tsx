@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { WORDS, type Word } from "./data/words";
+import { burstConfetti } from "./lib/confetti";
 import { sampleDistinct, shuffleInPlace } from "./lib/random";
+import { playDing, playPop, playTada } from "./lib/sfx";
 import { speakChineseSequence, stopSpeech } from "./lib/speech";
 
 type OptionState = "idle" | "wrong" | "correct";
@@ -82,6 +84,7 @@ export default function App() {
   const deckRef = useRef<string[]>([]);
   const lastWordIdRef = useRef<string | null>(null);
   const nextTimeoutRef = useRef<number | null>(null);
+  const lastCelebratedStreakRef = useRef<number>(0);
 
   function clearNextTimeout(): void {
     if (nextTimeoutRef.current === null) return;
@@ -116,6 +119,7 @@ export default function App() {
     setMistakeCount(0);
     setStreak(0);
     setBestStreak(0);
+    lastCelebratedStreakRef.current = 0;
     lastWordIdRef.current = null;
     deckRef.current = makeDeck(null);
     nextQuestion();
@@ -143,6 +147,7 @@ export default function App() {
     }));
 
     if (isCorrect) {
+      if (audioEnabled) playDing();
       setLocked(true);
       setCorrectCount((count) => count + 1);
       setStreak((current) => {
@@ -157,6 +162,7 @@ export default function App() {
       return;
     }
 
+    if (audioEnabled) playPop();
     setMistakeCount((count) => count + 1);
     setStreak(0);
   }
@@ -171,6 +177,17 @@ export default function App() {
     if (!audioEnabled) return;
     void speakChineseSequence([PROMPT_ZH, question.word.hanzi], { rate: 0.95 });
   }, [started, question?.word.id, audioEnabled]);
+
+  useEffect(() => {
+    if (!started) return;
+    if (streak <= 0) return;
+    if (streak % 10 !== 0) return;
+    if (lastCelebratedStreakRef.current === streak) return;
+    lastCelebratedStreakRef.current = streak;
+
+    burstConfetti();
+    if (audioEnabled) playTada();
+  }, [streak, started, audioEnabled]);
 
   useEffect(() => {
     return () => {
