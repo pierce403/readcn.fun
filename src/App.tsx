@@ -180,8 +180,8 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
-      <div className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center p-4">
+    <div className="min-h-[100dvh] bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-3xl items-center justify-center p-4 sm:p-6 [padding-top:calc(theme(spacing.4)+env(safe-area-inset-top))] [padding-bottom:calc(theme(spacing.4)+env(safe-area-inset-bottom))]">
         <div className="w-full rounded-3xl bg-slate-900/50 p-6 shadow-2xl ring-1 ring-slate-700/40 backdrop-blur sm:p-8">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -195,7 +195,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setAudioEnabled((value) => !value)}
-                className="inline-flex items-center gap-2 rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 ring-1 ring-slate-700/40 hover:bg-slate-700"
+                className="inline-flex touch-manipulation items-center gap-2 rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 ring-1 ring-slate-700/40 hover:bg-slate-700"
                 aria-pressed={audioEnabled}
                 title="Toggle audio"
               >
@@ -212,7 +212,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={restart}
-                className="inline-flex items-center rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 ring-1 ring-slate-700/40 hover:bg-slate-700"
+                className="inline-flex touch-manipulation items-center rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 ring-1 ring-slate-700/40 hover:bg-slate-700"
               >
                 Restart
               </button>
@@ -232,7 +232,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={start}
-                className="mt-8 inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-6 py-3 text-base font-semibold text-emerald-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                className="mt-8 inline-flex touch-manipulation items-center justify-center rounded-2xl bg-emerald-500 px-6 py-3 text-base font-semibold text-emerald-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300"
               >
                 Start
               </button>
@@ -254,7 +254,7 @@ export default function App() {
                   type="button"
                   onClick={sayPrompt}
                   disabled={!audioEnabled}
-                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 ring-1 ring-slate-700/40 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-4 inline-flex touch-manipulation items-center gap-2 rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 ring-1 ring-slate-700/40 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Play audio
                 </button>
@@ -279,7 +279,7 @@ export default function App() {
                       onClick={() => choose(option.id)}
                       disabled={isDisabled}
                       className={[
-                        "w-full rounded-2xl px-5 py-4 text-left text-lg font-semibold shadow-sm ring-1 transition-colors",
+                        "w-full touch-manipulation rounded-2xl px-5 py-4 text-left text-lg font-semibold shadow-sm ring-1 transition-colors",
                         "focus:outline-none focus:ring-2 focus:ring-slate-300/40",
                         "disabled:cursor-not-allowed disabled:opacity-70",
                         className,
