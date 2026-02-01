@@ -15,6 +15,9 @@
 - Tap a choice:
   - Wrong: that button turns red and is disabled.
   - Correct: turns green, locks input briefly, then advances to next word.
+- Sound + celebration:
+  - Wrong plays a short “pop”, correct plays a “ding” (Web Audio API).
+  - Every streak milestone (10, 20, 30...) triggers confetti + a “tada”.
 - Audio:
   - Uses Web Speech API (`speechSynthesis`) to say `这是什么字？` then the character.
   - Browsers require a user gesture before speech will play; keep a “Start/Play audio” button.
@@ -42,4 +45,3 @@
 - Fix is already applied: `typeRoots: ["./node_modules/@types"]` in:
   - `tsconfig.app.json`
   - `tsconfig.node.json`
-
