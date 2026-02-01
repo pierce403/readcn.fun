@@ -85,6 +85,7 @@ export default function App() {
   const lastWordIdRef = useRef<string | null>(null);
   const nextTimeoutRef = useRef<number | null>(null);
   const lastCelebratedStreakRef = useRef<number>(0);
+  const hadMistakeThisQuestionRef = useRef<boolean>(false);
 
   function clearNextTimeout(): void {
     if (nextTimeoutRef.current === null) return;
@@ -95,6 +96,7 @@ export default function App() {
   function nextQuestion(): void {
     clearNextTimeout();
     stopSpeech();
+    hadMistakeThisQuestionRef.current = false;
 
     if (deckRef.current.length === 0) {
       deckRef.current = makeDeck(lastWordIdRef.current);
@@ -120,6 +122,7 @@ export default function App() {
     setStreak(0);
     setBestStreak(0);
     lastCelebratedStreakRef.current = 0;
+    hadMistakeThisQuestionRef.current = false;
     lastWordIdRef.current = null;
     deckRef.current = makeDeck(null);
     nextQuestion();
@@ -150,11 +153,15 @@ export default function App() {
       if (audioEnabled) playDing();
       setLocked(true);
       setCorrectCount((count) => count + 1);
-      setStreak((current) => {
-        const next = current + 1;
-        setBestStreak((best) => Math.max(best, next));
-        return next;
-      });
+      if (hadMistakeThisQuestionRef.current) {
+        setStreak(0);
+      } else {
+        setStreak((current) => {
+          const next = current + 1;
+          setBestStreak((best) => Math.max(best, next));
+          return next;
+        });
+      }
 
       nextTimeoutRef.current = window.setTimeout(() => {
         nextQuestion();
@@ -163,6 +170,8 @@ export default function App() {
     }
 
     if (audioEnabled) playPop();
+    hadMistakeThisQuestionRef.current = true;
+    lastCelebratedStreakRef.current = 0;
     setMistakeCount((count) => count + 1);
     setStreak(0);
   }

@@ -17,6 +17,7 @@
   - Correct: turns green, locks input briefly, then advances to next word.
 - Sound + celebration:
   - Wrong plays a short “pop”, correct plays a “ding” (Web Audio API).
+  - Streak counts only first-try correct answers; any wrong guess resets it to `0`.
   - Every streak milestone (10, 20, 30...) triggers confetti + a “tada”.
 - Audio:
   - Uses Web Speech API (`speechSynthesis`) to say `这是什么字？` then the character.
