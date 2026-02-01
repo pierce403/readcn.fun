@@ -7,7 +7,7 @@ import { speakChineseSequence, stopSpeech } from "./lib/speech";
 
 type OptionState = "idle" | "wrong" | "correct";
 
-type AnswerMode = "english" | "pinyin";
+type AnswerMode = "en" | "cn";
 
 type Option = {
   id: string;
@@ -63,6 +63,12 @@ function storeString(key: string, value: string): void {
 
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function parseAnswerMode(value: string): AnswerMode {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "cn" || normalized === "chinese" || normalized === "pinyin") return "cn";
+  return "en";
 }
 
 function buildQuestion(word: Word): Question {
@@ -121,8 +127,9 @@ export default function App() {
   const [started, setStarted] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(() => loadStoredBool(AUDIO_STORAGE_KEY, true));
   const [answerMode, setAnswerMode] = useState<AnswerMode>(() => {
-    const stored = loadStoredString(ANSWER_MODE_STORAGE_KEY, "english");
-    return stored === "pinyin" ? "pinyin" : "english";
+    const stored = loadStoredString(ANSWER_MODE_STORAGE_KEY, "cn");
+    if (stored === "english") return "en";
+    return parseAnswerMode(stored);
   });
 
   const [question, setQuestion] = useState<Question | null>(null);
@@ -263,17 +270,19 @@ export default function App() {
     };
   }, []);
 
-  return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-3xl items-center justify-center p-4 sm:p-6 [padding-top:calc(theme(spacing.4)+env(safe-area-inset-top))] [padding-bottom:calc(theme(spacing.4)+env(safe-area-inset-bottom))]">
-        <div className="w-full rounded-3xl bg-slate-900/50 p-6 shadow-2xl ring-1 ring-slate-700/40 backdrop-blur sm:p-8">
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">readcn.fun</h1>
-              <p className="text-sm text-slate-300">
-                Guess the English meaning of the Chinese character.
-              </p>
-            </div>
+	  return (
+	    <div className="min-h-[100dvh] bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
+	      <div className="mx-auto flex min-h-[100dvh] w-full max-w-3xl items-center justify-center p-4 sm:p-6 [padding-top:calc(theme(spacing.4)+env(safe-area-inset-top))] [padding-bottom:calc(theme(spacing.4)+env(safe-area-inset-bottom))]">
+	        <div className="w-full rounded-3xl bg-slate-900/50 p-6 shadow-2xl ring-1 ring-slate-700/40 backdrop-blur sm:p-8">
+	          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+	            <div>
+	              <h1 className="text-xl font-semibold tracking-tight">readcn.fun</h1>
+	              <p className="text-sm text-slate-300">
+	                {answerMode === "cn"
+	                  ? "Pick the matching Chinese character."
+	                  : "Pick the English meaning of the character."}
+	              </p>
+	            </div>
 
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -286,15 +295,17 @@ export default function App() {
             </div>
           </header>
 
-          {!started ? (
-            <div className="mt-10 text-center">
-              <div className="text-6xl font-semibold leading-none text-slate-200 sm:text-7xl">
-                汉字
-              </div>
+	          {!started ? (
+	            <div className="mt-10 text-center">
+	              <div className="text-6xl font-semibold leading-none text-slate-200 sm:text-7xl">
+	                汉字
+	              </div>
 
-              <p className="mx-auto mt-4 max-w-md text-sm text-slate-300">
-                You’ll see a character and 3 choices. Pick the correct English word.
-              </p>
+	              <p className="mx-auto mt-4 max-w-md text-sm text-slate-300">
+	                {answerMode === "cn"
+	                  ? "You’ll see an English word and 3 choices. Pick the correct character."
+	                  : "You’ll see a character and 3 choices. Pick the correct English word."}
+	              </p>
 
               <button
                 type="button"
@@ -308,12 +319,17 @@ export default function App() {
                 Tip: browsers require a click before they’ll play speech audio.
               </p>
             </div>
-          ) : question ? (
-            <div className="mt-8">
-              <div className="flex flex-col items-center text-center">
-                <div className="select-none text-7xl font-semibold leading-none tracking-tight sm:text-8xl">
-                  {question.word.hanzi}
-                </div>
+	          ) : question ? (
+	            <div className="mt-8">
+	              <div className="flex flex-col items-center text-center">
+	                <div
+	                  className={[
+	                    "select-none font-semibold leading-none tracking-tight",
+	                    answerMode === "cn" ? "text-3xl sm:text-4xl" : "text-7xl sm:text-8xl",
+	                  ].join(" ")}
+	                >
+	                  {answerMode === "cn" ? question.word.english : question.word.hanzi}
+	                </div>
 
                 <button
                   type="button"
@@ -325,42 +341,58 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="mt-8 grid grid-cols-1 gap-3">
-                {question.options.map((option) => {
-                  const state = optionStates[option.id] ?? "idle";
-                  const isDisabled = locked || state === "wrong";
-                  const optionWord = wordsById[option.id];
-                  const label = optionWord
-                    ? answerMode === "pinyin"
-                      ? optionWord.pinyin
-                      : optionWord.english
-                    : option.id;
+	              <div className="mt-8 grid grid-cols-1 gap-3">
+	                {question.options.map((option) => {
+	                  const state = optionStates[option.id] ?? "idle";
+	                  const isDisabled = locked || state === "wrong";
+	                  const optionWord = wordsById[option.id];
+	                  const label = optionWord
+	                    ? answerMode === "cn"
+	                      ? optionWord.hanzi
+	                      : optionWord.english
+	                    : option.id;
+	                  const secondary =
+	                    optionWord && answerMode === "cn" ? optionWord.pinyin : null;
 
-                  const className =
-                    state === "correct"
-                      ? "bg-emerald-500 text-emerald-950 ring-emerald-300/50"
-                      : state === "wrong"
+	                  const className =
+	                    state === "correct"
+	                      ? "bg-emerald-500 text-emerald-950 ring-emerald-300/50"
+	                      : state === "wrong"
                         ? "bg-rose-500 text-rose-950 ring-rose-300/50"
                         : "bg-slate-800 text-slate-100 ring-slate-700/40 hover:bg-slate-700";
 
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => choose(option.id)}
-                      disabled={isDisabled}
-                      className={[
-                        "w-full touch-manipulation rounded-2xl px-5 py-4 text-left text-lg font-semibold shadow-sm ring-1 transition-colors",
-                        "focus:outline-none focus:ring-2 focus:ring-slate-300/40",
-                        "disabled:cursor-not-allowed disabled:opacity-70",
-                        className,
-                      ].join(" ")}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
+	                  return (
+	                    <button
+	                      key={option.id}
+	                      type="button"
+	                      onClick={() => choose(option.id)}
+	                      disabled={isDisabled}
+	                      className={[
+	                        "w-full touch-manipulation rounded-2xl px-5 py-4 text-left text-lg font-semibold shadow-sm ring-1 transition-colors",
+	                        "focus:outline-none focus:ring-2 focus:ring-slate-300/40",
+	                        "disabled:cursor-not-allowed disabled:opacity-70",
+	                        className,
+	                      ].join(" ")}
+	                    >
+	                      <div className="leading-tight">{label}</div>
+	                      {secondary ? (
+	                        <div
+	                          className={[
+	                            "mt-1 text-sm font-medium",
+	                            state === "correct"
+	                              ? "text-emerald-950/80"
+	                              : state === "wrong"
+	                                ? "text-rose-950/80"
+	                                : "text-slate-400",
+	                          ].join(" ")}
+	                        >
+	                          {secondary}
+	                        </div>
+	                      ) : null}
+	                    </button>
+	                  );
+	                })}
+	              </div>
 
               <div className="mt-8 grid grid-cols-2 gap-3 text-sm text-slate-300 sm:grid-cols-4">
                 <div className="rounded-2xl bg-slate-950/40 px-4 py-3 ring-1 ring-slate-700/30">
@@ -403,23 +435,23 @@ export default function App() {
           Audio {audioEnabled ? "On" : "Off"}
         </button>
 
-        <button
-          type="button"
-          onClick={() => setAnswerMode((mode) => (mode === "english" ? "pinyin" : "english"))}
-          className="inline-flex touch-manipulation items-center gap-2 rounded-full bg-slate-800/90 px-4 py-2 text-sm font-medium text-slate-100 shadow-lg ring-1 ring-slate-700/40 backdrop-blur hover:bg-slate-700"
-          aria-pressed={answerMode === "pinyin"}
-          title="Toggle answers between English and Pinyin"
-        >
-          <span
-            className={[
-              "h-2.5 w-2.5 rounded-full",
-              answerMode === "pinyin" ? "bg-sky-400" : "bg-amber-300",
-            ].join(" ")}
-            aria-hidden="true"
-          />
-          Answers {answerMode === "pinyin" ? "PY" : "EN"}
-        </button>
-      </div>
-    </div>
-  );
-}
+	        <button
+	          type="button"
+	          onClick={() => setAnswerMode((mode) => (mode === "en" ? "cn" : "en"))}
+	          className="inline-flex touch-manipulation items-center gap-2 rounded-full bg-slate-800/90 px-4 py-2 text-sm font-medium text-slate-100 shadow-lg ring-1 ring-slate-700/40 backdrop-blur hover:bg-slate-700"
+	          aria-pressed={answerMode === "cn"}
+	          title="Toggle answers between English and Chinese"
+	        >
+	          <span
+	            className={[
+	              "h-2.5 w-2.5 rounded-full",
+	              answerMode === "cn" ? "bg-sky-400" : "bg-amber-300",
+	            ].join(" ")}
+	            aria-hidden="true"
+	          />
+	          Answers {answerMode === "cn" ? "CN" : "EN"}
+	        </button>
+	      </div>
+	    </div>
+	  );
+	}

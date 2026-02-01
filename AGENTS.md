@@ -24,7 +24,9 @@
   - Says the target character only after you select the correct answer.
   - Browsers require a user gesture before speech will play; keep a “Start/Play audio” button.
 - Switches:
-  - Bottom-right toggles for Audio On/Off and Answers EN/PY (English vs Pinyin choices).
+  - Bottom-right toggles for Audio On/Off and Answers EN/CN.
+    - `EN`: prompt is Hanzi, answers are English.
+    - `CN`: prompt is English, answers are Hanzi with Pinyin shown below.
 
 ## Words dataset
 
