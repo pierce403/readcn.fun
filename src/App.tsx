@@ -281,13 +281,13 @@ export default function App() {
 	        <div className="w-full rounded-3xl bg-slate-900/50 p-6 shadow-2xl ring-1 ring-slate-700/40 backdrop-blur sm:p-8">
 	          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 	            <div>
-	              <h1 className="text-xl font-semibold tracking-tight">readcn.fun</h1>
-	              <p className="text-sm text-slate-300">
-	                {answerMode === "cn"
-	                  ? "Pick the matching Chinese character."
-	                  : "Pick the English meaning of the character."}
-	              </p>
-	            </div>
+              <h1 className="text-xl font-semibold tracking-tight">readcn.fun</h1>
+              <p className="text-sm text-slate-300">
+                {answerMode === "cn"
+                  ? "Pick the correct pinyin for the character."
+                  : "Pick the English meaning of the character."}
+              </p>
+            </div>
 
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -306,11 +306,11 @@ export default function App() {
 	                汉字
 	              </div>
 
-	              <p className="mx-auto mt-4 max-w-md text-sm text-slate-300">
-	                {answerMode === "cn"
-	                  ? "You’ll see an English word and 3 choices. Pick the correct character."
-	                  : "You’ll see a character and 3 choices. Pick the correct English word."}
-	              </p>
+              <p className="mx-auto mt-4 max-w-md text-sm text-slate-300">
+                {answerMode === "cn"
+                  ? "You’ll see a character and 3 choices. Pick the correct pinyin."
+                  : "You’ll see a character and 3 choices. Pick the correct English word."}
+              </p>
 
               <button
                 type="button"
@@ -330,10 +330,10 @@ export default function App() {
 	                <div
 	                  className={[
 	                    "select-none font-semibold leading-none tracking-tight",
-	                    answerMode === "cn" ? "text-3xl sm:text-4xl" : "text-7xl sm:text-8xl",
+	                    "text-7xl sm:text-8xl",
 	                  ].join(" ")}
 	                >
-	                  {answerMode === "cn" ? question.word.english : question.word.hanzi}
+	                  {question.word.hanzi}
 	                </div>
 
                 <button
@@ -353,11 +353,9 @@ export default function App() {
 	                  const optionWord = wordsById[option.id];
 	                  const label = optionWord
 	                    ? answerMode === "cn"
-	                      ? optionWord.hanzi
+	                      ? optionWord.pinyin
 	                      : optionWord.english
 	                    : option.id;
-	                  const secondary =
-	                    optionWord && answerMode === "cn" ? optionWord.pinyin : null;
 
 	                  const className =
 	                    state === "correct"
@@ -379,21 +377,7 @@ export default function App() {
 	                        className,
 	                      ].join(" ")}
 	                    >
-	                      <div className="leading-tight">{label}</div>
-	                      {secondary ? (
-	                        <div
-	                          className={[
-	                            "mt-1 text-sm font-medium",
-	                            state === "correct"
-	                              ? "text-emerald-950/80"
-	                              : state === "wrong"
-	                                ? "text-rose-950/80"
-	                                : "text-slate-400",
-	                          ].join(" ")}
-	                        >
-	                          {secondary}
-	                        </div>
-	                      ) : null}
+	                      {label}
 	                    </button>
 	                  );
 	                })}
