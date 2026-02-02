@@ -9,6 +9,27 @@ body {
   margin: 0;
 }
 
+.grid-board {
+  background-image:
+    linear-gradient(to right, transparent 49.5%, rgba(148, 163, 184, 0.18) 50%, transparent 50.5%),
+    linear-gradient(to bottom, transparent 49.5%, rgba(148, 163, 184, 0.18) 50%, transparent 50.5%),
+    linear-gradient(45deg, transparent 49.5%, rgba(148, 163, 184, 0.12) 50%, transparent 50.5%),
+    linear-gradient(-45deg, transparent 49.5%, rgba(148, 163, 184, 0.12) 50%, transparent 50.5%);
+  background-size: 100% 100%;
+}
+
+.grid-board svg,
+.grid-board canvas {
+  display: block;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.grid-board svg {
+  pointer-events: all;
+}
+
 @keyframes streak-flash {
   0% {
     opacity: 0;

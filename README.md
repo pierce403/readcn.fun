@@ -1,6 +1,11 @@
-# readcn.fun
+# learncn.fun
 
-A tiny Chinese character multiple-choice game (React + TypeScript + Tailwind), built as static HTML/CSS/JS.
+Tiny Chinese practice apps (React + TypeScript + Tailwind), built as static HTML/CSS/JS.
+
+## Apps
+
+- Read: multiple-choice character quiz (English or Pinyin answers)
+- Write: guided stroke-order practice (HanziWriter)
 
 ## License
 
@@ -28,3 +33,5 @@ In GitHub:
 
 1. Repo Settings → Pages
 2. Set Source to **GitHub Actions**
+
+Custom domain is configured via `public/CNAME`.

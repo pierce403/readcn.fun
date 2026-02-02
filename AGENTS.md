@@ -1,44 +1,35 @@
-# readcn.fun – agent notes
+# learncn.fun – agent notes
 
 ## Stack + commands
 
 - React + TypeScript + Vite, compiled to static `dist/`
 - Tailwind CSS v4 via `@tailwindcss/vite` (see `vite.config.ts`)
-- Footer link: includes a shortcut to `writecn.fun`.
 - Local:
   - `npm install`
   - `npm run dev`
   - `npm run build` (runs `tsc -b` then `vite build`)
 
-## Game behavior (current)
+## App structure
 
-- Shows one Chinese character (`hanzi`) and 3 English choices.
+- `src/App.tsx` is the learncn.fun home screen and app switcher.
+- Apps live under `src/apps/*`:
+  - `src/apps/read/ReadApp.tsx`
+  - `src/apps/write/WriteApp.tsx`
+- Each app supports an optional `onHome` callback and renders an “Apps” button in the header when provided.
+
+## Read app
+
+- Shows one Chinese character (`hanzi`) and 3 choices.
+- Answer modes:
+  - `Answers CN`: choices are **Pinyin**
+  - `Answers EN`: choices are **English**
 - Tap a choice:
-  - Wrong: that button turns red and is disabled.
-  - Correct: turns green, locks input briefly, then advances to next word.
-- Sound + celebration:
-  - Wrong plays a short “pop”, correct plays a “ding” (Web Audio API).
-  - Streak counts only first-try correct answers; any wrong guess resets it to `0`.
-  - Every streak milestone triggers confetti + “tada” + a big number flash:
-    - `10`: 1 burst
-    - `20`: 2 bursts
-    - `30`: 3 bursts
-    - etc.
-- Audio:
-  - Uses Web Speech API (`speechSynthesis`) to say `这是什么字？` (prompt) when a new card appears.
-  - Says the target character only after you select the correct answer.
-  - Browsers require a user gesture before speech will play; use the “Play audio” button.
-- Switches:
-  - Bottom-right toggles for Audio On/Off and Answers EN/CN.
-    - `EN`: prompt is Hanzi, answers are English.
-    - `CN`: prompt is Hanzi, answers are Pinyin.
-  - “Play audio” button reads the prompt:
-    - `CN` mode: speaks the English word.
-    - `EN` mode: speaks the Hanzi (Mandarin).
-
-## Start behavior
-
-- The game shows a Start button first to satisfy browser audio requirements (user gesture).
+  - Wrong: button turns red; streak resets to `0`; plays “pop”.
+  - Correct: button turns green; speaks the character; advances to the next card; plays “ding”.
+- Prompt audio:
+  - Auto prompt says `这是什么字？` after each new card (once the app is started).
+  - “Play audio” speaks the English word in CN mode, or the Mandarin character in EN mode.
+- Audio requires a user gesture → the app gates with a Start button.
 
 ## Words dataset
 
@@ -46,7 +37,24 @@
 - Each entry must have:
   - `id` unique + stable (used for options / deck)
   - `hanzi`, `pinyin`, `english`
-- Current list is based on the provided Unit 2 literacy assessment photos.
+- Current list is based on the Unit 2 literacy assessment photos.
+
+## Write app
+
+- Guided stroke-order practice using `hanzi-writer` (see `package.json`).
+- Dataset: `src/apps/write/data/unit2.ts` (Unit 2 items marked with (W)).
+- Any mistake during the word resets the “perfect streak” to `0`.
+- Audio requires a user gesture → the app gates with a Start button.
+
+## Celebration (both apps)
+
+- Wrong answers / mistakes reset streak to `0`.
+- Every streak milestone triggers confetti + “tada” + a big number flash:
+  - `10`: 1 burst
+  - `20`: 2 bursts
+  - `30`: 3 bursts
+  - etc.
+- Flash animation lives in `src/index.css` (`@keyframes streak-flash`).
 
 ## GitHub Pages deploy
 
@@ -56,6 +64,7 @@
 - Repo setting required:
   - GitHub **Settings → Pages → Source = GitHub Actions**
 - Vite config sets `base: "./"` so assets work on Pages (see `vite.config.ts`).
+- Custom domain is configured via `public/CNAME`.
 
 ## TypeScript gotcha we hit
 

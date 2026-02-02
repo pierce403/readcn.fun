@@ -1,525 +1,109 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { WORDS, type Word } from "./data/words";
-import { burstConfetti } from "./lib/confetti";
-import { shuffleInPlace } from "./lib/random";
-import { playDing, playPop, playTada } from "./lib/sfx";
-import { speakChineseSequence, speakEnglishSequence, stopSpeech } from "./lib/speech";
+import { useEffect, useMemo, useState } from "react";
+import ReadApp from "./apps/read/ReadApp";
+import WriteApp from "./apps/write/WriteApp";
 
-type OptionState = "idle" | "wrong" | "correct";
+type AppId = "read" | "write";
 
-type AnswerMode = "en" | "cn";
-
-type Option = {
-  id: string;
+type AppMeta = {
+  id: AppId;
+  title: string;
+  subtitle: string;
+  description: string;
+  accent: string;
 };
-
-type Question = {
-  word: Word;
-  options: Option[];
-  correctOptionId: string;
-};
-
-const AUDIO_STORAGE_KEY = "readcn.audioEnabled";
-const ANSWER_MODE_STORAGE_KEY = "readcn.answerMode";
-const PROMPT_ZH = "这是什么字？";
-const STREAK_MILESTONE = 10;
-const CELEBRATION_STEP_MS = 260;
-const CELEBRATION_BUFFER_MS = 220;
-const FLASH_DURATION_MS = 650;
-
-function loadStoredBool(key: string, fallback: boolean): boolean {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const stored = window.localStorage.getItem(key);
-    if (stored === null) return fallback;
-    return stored === "true";
-  } catch {
-    return fallback;
-  }
-}
-
-function loadStoredString(key: string, fallback: string): string {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const stored = window.localStorage.getItem(key);
-    if (stored === null) return fallback;
-    return stored;
-  } catch {
-    return fallback;
-  }
-}
-
-function storeBool(key: string, value: boolean): void {
-  try {
-    window.localStorage.setItem(key, String(value));
-  } catch {
-    // ignore
-  }
-}
-
-function storeString(key: string, value: string): void {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // ignore
-  }
-}
-
-function normalizeKey(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function parseAnswerMode(value: string): AnswerMode {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "cn" || normalized === "chinese" || normalized === "pinyin") return "cn";
-  return "en";
-}
-
-function buildQuestion(word: Word): Question {
-  const candidates = WORDS.filter((candidate) => candidate.id !== word.id);
-  shuffleInPlace(candidates);
-
-  const distractors: Word[] = [];
-  const usedEnglish = new Set<string>([normalizeKey(word.english)]);
-  const usedPinyin = new Set<string>([normalizeKey(word.pinyin)]);
-
-  for (const candidate of candidates) {
-    if (distractors.length >= 2) break;
-    const englishKey = normalizeKey(candidate.english);
-    const pinyinKey = normalizeKey(candidate.pinyin);
-    if (usedEnglish.has(englishKey)) continue;
-    if (usedPinyin.has(pinyinKey)) continue;
-    distractors.push(candidate);
-    usedEnglish.add(englishKey);
-    usedPinyin.add(pinyinKey);
-  }
-
-  if (distractors.length < 2) {
-    const remaining = candidates.filter((candidate) => !distractors.some((d) => d.id === candidate.id));
-    while (distractors.length < 2 && remaining.length > 0) {
-      distractors.push(remaining.pop()!);
-    }
-  }
-
-  const options: Option[] = [word, ...distractors].map((w) => ({ id: w.id }));
-  shuffleInPlace(options);
-
-  return {
-    word,
-    options,
-    correctOptionId: word.id,
-  };
-}
-
-function makeDeck(previousWordId: string | null): string[] {
-  const ids = WORDS.map((word) => word.id);
-  shuffleInPlace(ids);
-
-  if (previousWordId && ids.length > 1 && ids[ids.length - 1] === previousWordId) {
-    [ids[ids.length - 1], ids[ids.length - 2]] = [ids[ids.length - 2], ids[ids.length - 1]];
-  }
-
-  return ids;
-}
 
 export default function App() {
-  const wordsById = useMemo<Record<string, Word>>(
-    () => Object.fromEntries(WORDS.map((word) => [word.id, word])) as Record<string, Word>,
+  const apps = useMemo<AppMeta[]>(
+    () => [
+      {
+        id: "read",
+        title: "Read",
+        subtitle: "Multiple choice",
+        description: "See a character and pick the right meaning (English) or pronunciation (pinyin).",
+        accent: "from-sky-400/20 via-slate-900/40 to-slate-900/20 ring-sky-400/30",
+      },
+      {
+        id: "write",
+        title: "Write",
+        subtitle: "Stroke order",
+        description: "Hear a prompt, then write the character in the grid with guided stroke order.",
+        accent: "from-emerald-400/20 via-slate-900/40 to-slate-900/20 ring-emerald-400/30",
+      },
+    ],
     [],
   );
 
-  const [started, setStarted] = useState(false);
-  const [audioEnabled, setAudioEnabled] = useState(() => loadStoredBool(AUDIO_STORAGE_KEY, true));
-  const [answerMode, setAnswerMode] = useState<AnswerMode>(() => {
-    const stored = loadStoredString(ANSWER_MODE_STORAGE_KEY, "cn");
-    if (stored === "english") return "en";
-    return parseAnswerMode(stored);
-  });
+  const [activeApp, setActiveApp] = useState<AppId | null>(null);
 
-  const [question, setQuestion] = useState<Question | null>(null);
-  const [optionStates, setOptionStates] = useState<Record<string, OptionState>>({});
-  const [locked, setLocked] = useState(false);
-
-  const [correctCount, setCorrectCount] = useState(0);
-  const [mistakeCount, setMistakeCount] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [bestStreak, setBestStreak] = useState(0);
-  const [streakFlash, setStreakFlash] = useState<{ token: number; value: number } | null>(null);
-
-  const deckRef = useRef<string[]>([]);
-  const lastWordIdRef = useRef<string | null>(null);
-  const nextTimeoutRef = useRef<number | null>(null);
-  const lastCelebratedStreakRef = useRef<number>(0);
-  const hadMistakeThisQuestionRef = useRef<boolean>(false);
-  const streakRef = useRef<number>(0);
-  const streakFlashTokenRef = useRef<number>(0);
-  const celebrationTimeoutsRef = useRef<number[]>([]);
-  const skipNextAutoPromptRef = useRef<boolean>(false);
-
-  function clearNextTimeout(): void {
-    if (nextTimeoutRef.current === null) return;
-    window.clearTimeout(nextTimeoutRef.current);
-    nextTimeoutRef.current = null;
-  }
-
-  function clearCelebrationTimeouts(): void {
-    for (const timeoutId of celebrationTimeoutsRef.current) {
-      window.clearTimeout(timeoutId);
-    }
-    celebrationTimeoutsRef.current = [];
-  }
-
-  function flashStreak(value: number): void {
-    streakFlashTokenRef.current += 1;
-    const token = streakFlashTokenRef.current;
-    setStreakFlash({ token, value });
-
-    celebrationTimeoutsRef.current.push(
-      window.setTimeout(() => {
-        setStreakFlash((current) => (current?.token === token ? null : current));
-      }, FLASH_DURATION_MS),
-    );
-  }
-
-  function nextQuestion(): void {
-    clearNextTimeout();
-    stopSpeech();
-    hadMistakeThisQuestionRef.current = false;
-
-    if (deckRef.current.length === 0) {
-      deckRef.current = makeDeck(lastWordIdRef.current);
-    }
-
-    const nextWordId = deckRef.current.pop();
-    if (!nextWordId) return;
-
-    lastWordIdRef.current = nextWordId;
-    const word = wordsById[nextWordId];
-    if (!word) return;
-
-    setQuestion(buildQuestion(word));
-    setOptionStates({});
-    setLocked(false);
-  }
-
-  function resetGame(): void {
-    clearNextTimeout();
-    clearCelebrationTimeouts();
-    setCorrectCount(0);
-    setMistakeCount(0);
-    setStreak(0);
-    setBestStreak(0);
-    setStreakFlash(null);
-    lastCelebratedStreakRef.current = 0;
-    hadMistakeThisQuestionRef.current = false;
-    lastWordIdRef.current = null;
-    deckRef.current = makeDeck(null);
-    nextQuestion();
-  }
-
-  function startGame(): void {
-    if (started) return;
-    resetGame();
-    skipNextAutoPromptRef.current = true;
-    setStarted(true);
-    if (audioEnabled) void speakChineseSequence([PROMPT_ZH], { rate: 0.95 });
-  }
-
-  function playPromptAudio(): void {
-    if (!question) return;
-    if (!audioEnabled) return;
-    if (answerMode === "cn") {
-      void speakEnglishSequence([question.word.english], { rate: 1 });
+  useEffect(() => {
+    if (activeApp === "read") {
+      document.title = "Read • learncn.fun";
       return;
     }
-    void speakChineseSequence([question.word.hanzi], { rate: 0.95 });
-  }
-
-  function choose(optionId: string): void {
-    if (!question) return;
-    if (locked) return;
-
-    const isCorrect = optionId === question.correctOptionId;
-
-    setOptionStates((prev) => ({
-      ...prev,
-      [optionId]: isCorrect ? "correct" : "wrong",
-    }));
-
-    if (isCorrect) {
-      const nextStreak = hadMistakeThisQuestionRef.current ? 0 : streakRef.current + 1;
-      const celebrationBursts =
-        nextStreak > 0 && nextStreak % STREAK_MILESTONE === 0 ? nextStreak / STREAK_MILESTONE : 0;
-
-      if (audioEnabled) playDing();
-      if (audioEnabled) void speakChineseSequence([question.word.hanzi], { rate: 0.95 });
-      setLocked(true);
-      setCorrectCount((count) => count + 1);
-      if (hadMistakeThisQuestionRef.current) {
-        setStreak(0);
-      } else {
-        setStreak((current) => {
-          const next = current + 1;
-          setBestStreak((best) => Math.max(best, next));
-          return next;
-        });
-      }
-
-      const celebrationExtraMs =
-        celebrationBursts > 0
-          ? (celebrationBursts - 1) * CELEBRATION_STEP_MS + CELEBRATION_BUFFER_MS
-          : 0;
-      const delayMs = (audioEnabled ? 950 : 650) + celebrationExtraMs;
-      nextTimeoutRef.current = window.setTimeout(() => {
-        nextQuestion();
-      }, delayMs);
+    if (activeApp === "write") {
+      document.title = "Write • learncn.fun";
       return;
     }
+    document.title = "learncn.fun";
+  }, [activeApp]);
 
-    if (audioEnabled) playPop();
-    hadMistakeThisQuestionRef.current = true;
-    lastCelebratedStreakRef.current = 0;
-    setMistakeCount((count) => count + 1);
-    setStreak(0);
+  if (activeApp === "read") {
+    return <ReadApp onHome={() => setActiveApp(null)} />;
   }
 
-  useEffect(() => {
-    storeBool(AUDIO_STORAGE_KEY, audioEnabled);
-  }, [audioEnabled]);
+  if (activeApp === "write") {
+    return <WriteApp onHome={() => setActiveApp(null)} />;
+  }
 
-  useEffect(() => {
-    streakRef.current = streak;
-  }, [streak]);
-
-  useEffect(() => {
-    storeString(ANSWER_MODE_STORAGE_KEY, answerMode);
-  }, [answerMode]);
-
-  useEffect(() => {
-    if (!started) return;
-    if (!question) return;
-    if (!audioEnabled) return;
-    if (skipNextAutoPromptRef.current) {
-      skipNextAutoPromptRef.current = false;
-      return;
-    }
-    void speakChineseSequence([PROMPT_ZH], { rate: 0.95 });
-  }, [started, question?.word.id, audioEnabled]);
-
-  useEffect(() => {
-    if (streak <= 0) return;
-    if (streak % STREAK_MILESTONE !== 0) return;
-    if (lastCelebratedStreakRef.current === streak) return;
-    lastCelebratedStreakRef.current = streak;
-
-    const bursts = Math.max(1, Math.floor(streak / STREAK_MILESTONE));
-    clearCelebrationTimeouts();
-
-    for (let index = 0; index < bursts; index++) {
-      celebrationTimeoutsRef.current.push(
-        window.setTimeout(() => {
-          flashStreak(streak);
-          burstConfetti();
-          if (audioEnabled) playTada();
-        }, index * CELEBRATION_STEP_MS),
-      );
-    }
-  }, [streak, audioEnabled]);
-
-  useEffect(() => {
-    return () => {
-      clearNextTimeout();
-      clearCelebrationTimeouts();
-      stopSpeech();
-    };
-  }, []);
-
-	  return (
-	    <div className="min-h-[100dvh] bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
-	      <div className="mx-auto flex min-h-[100dvh] w-full max-w-3xl items-center justify-center p-4 sm:p-6 [padding-top:calc(theme(spacing.4)+env(safe-area-inset-top))] [padding-bottom:calc(theme(spacing.4)+env(safe-area-inset-bottom))]">
-	        <div className="w-full rounded-3xl bg-slate-900/50 p-6 shadow-2xl ring-1 ring-slate-700/40 backdrop-blur sm:p-8">
-	          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-	            <div>
-              <h1 className="text-xl font-semibold tracking-tight">readcn.fun</h1>
-              <p className="text-sm text-slate-300">
-                {answerMode === "cn"
-                  ? "Pick the correct pinyin for the character."
-                  : "Pick the English meaning of the character."}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-            </div>
+  return (
+    <div className="min-h-[100dvh] bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-3xl items-center justify-center p-4 sm:p-6 [padding-top:calc(theme(spacing.4)+env(safe-area-inset-top))] [padding-bottom:calc(theme(spacing.4)+env(safe-area-inset-bottom))]">
+        <div className="w-full rounded-3xl bg-slate-900/50 p-6 shadow-2xl ring-1 ring-slate-700/40 backdrop-blur sm:p-8">
+          <header className="flex flex-col gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-100">learncn.fun</h1>
+            <p className="text-sm text-slate-300">Fast, tiny Chinese practice apps. Pick one to start.</p>
           </header>
 
-          {!started ? (
-            <div className="mt-10 text-center">
-              <div className="text-6xl font-semibold leading-none text-slate-200 sm:text-7xl">
-                汉字
-              </div>
-
-              <p className="mx-auto mt-4 max-w-md text-sm text-slate-300">
-                {answerMode === "cn"
-                  ? "You’ll see a character and 3 choices. Pick the correct pinyin."
-                  : "You’ll see a character and 3 choices. Pick the correct English word."}
-              </p>
-
-              <button
-                type="button"
-                onClick={startGame}
-                className="mt-8 inline-flex touch-manipulation items-center justify-center rounded-2xl bg-emerald-500 px-6 py-3 text-base font-semibold text-emerald-950 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300"
-              >
-                Start
-              </button>
-
-              <p className="mt-4 text-xs text-slate-400">
-                Tip: tap Start once so your browser will allow speech audio.
-              </p>
+          <div className="mt-8">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Popular apps
             </div>
-          ) : question ? (
-            <div className="mt-8">
-              <div className="flex flex-col items-center text-center">
-                <div
-                  className={[
-	                    "select-none font-semibold leading-none tracking-tight",
-	                    "text-7xl sm:text-8xl",
-	                  ].join(" ")}
-	                >
-	                  {question.word.hanzi}
-	                </div>
 
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {apps.map((app) => (
                 <button
+                  key={app.id}
                   type="button"
-                  onClick={playPromptAudio}
-                  disabled={!audioEnabled}
-                  className="mt-4 inline-flex touch-manipulation items-center gap-2 rounded-full bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 ring-1 ring-slate-700/40 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => setActiveApp(app.id)}
+                  className={[
+                    "group w-full touch-manipulation rounded-3xl bg-gradient-to-br p-5 text-left shadow-lg ring-1 transition",
+                    "focus:outline-none focus:ring-2 focus:ring-slate-300/40",
+                    "hover:-translate-y-0.5 hover:bg-slate-800/60",
+                    app.accent,
+                  ].join(" ")}
                 >
-                  Play audio
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-lg font-semibold text-slate-100">{app.title}</div>
+                      <div className="mt-0.5 text-xs font-medium text-slate-300">{app.subtitle}</div>
+                    </div>
+
+                    <div className="mt-1 text-xs font-semibold text-slate-200/90">
+                      Open →
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-sm text-slate-300">{app.description}</div>
                 </button>
-              </div>
-
-	              <div className="mt-8 grid grid-cols-1 gap-3">
-	                {question.options.map((option) => {
-	                  const state = optionStates[option.id] ?? "idle";
-	                  const isDisabled = locked || state === "wrong";
-	                  const optionWord = wordsById[option.id];
-	                  const label = optionWord
-	                    ? answerMode === "cn"
-	                      ? optionWord.pinyin
-	                      : optionWord.english
-	                    : option.id;
-
-	                  const className =
-	                    state === "correct"
-	                      ? "bg-emerald-500 text-emerald-950 ring-emerald-300/50"
-	                      : state === "wrong"
-                        ? "bg-rose-500 text-rose-950 ring-rose-300/50"
-                        : "bg-slate-800 text-slate-100 ring-slate-700/40 hover:bg-slate-700";
-
-	                  return (
-	                    <button
-	                      key={option.id}
-	                      type="button"
-	                      onClick={() => choose(option.id)}
-	                      disabled={isDisabled}
-	                      className={[
-	                        "w-full touch-manipulation rounded-2xl px-5 py-4 text-left text-lg font-semibold shadow-sm ring-1 transition-colors",
-	                        "focus:outline-none focus:ring-2 focus:ring-slate-300/40",
-	                        "disabled:cursor-not-allowed disabled:opacity-70",
-	                        className,
-	                      ].join(" ")}
-	                    >
-	                      {label}
-	                    </button>
-	                  );
-	                })}
-	              </div>
-
-              <div className="mt-8 grid grid-cols-2 gap-3 text-sm text-slate-300 sm:grid-cols-4">
-                <div className="rounded-2xl bg-slate-950/40 px-4 py-3 ring-1 ring-slate-700/30">
-                  <div className="text-xs text-slate-400">Correct</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">{correctCount}</div>
-                </div>
-                <div className="rounded-2xl bg-slate-950/40 px-4 py-3 ring-1 ring-slate-700/30">
-                  <div className="text-xs text-slate-400">Mistakes</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">{mistakeCount}</div>
-                </div>
-                <div className="rounded-2xl bg-slate-950/40 px-4 py-3 ring-1 ring-slate-700/30">
-                  <div className="text-xs text-slate-400">Streak</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">{streak}</div>
-                </div>
-                <div className="rounded-2xl bg-slate-950/40 px-4 py-3 ring-1 ring-slate-700/30">
-                  <div className="text-xs text-slate-400">Best</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">{bestStreak}</div>
-                </div>
-              </div>
+              ))}
             </div>
-          ) : (
-            <div className="mt-10 text-center">
-              <div className="text-2xl font-semibold text-slate-200">Loading…</div>
-            </div>
-          )}
-        </div>
-      </div>
 
-      <a
-        href="https://writecn.fun"
-        target="_blank"
-        rel="noreferrer"
-        className="fixed z-40 text-sm font-medium text-slate-300 underline-offset-4 hover:text-slate-100 hover:underline [left:calc(theme(spacing.4)+env(safe-area-inset-left))] [bottom:calc(theme(spacing.4)+env(safe-area-inset-bottom))]"
-        title="Open writecn.fun"
-      >
-        writecn.fun
-      </a>
-
-      <div className="fixed z-50 flex flex-col gap-2 [right:calc(theme(spacing.4)+env(safe-area-inset-right))] [bottom:calc(theme(spacing.4)+env(safe-area-inset-bottom))]">
-        <button
-          type="button"
-          onClick={() => setAudioEnabled((value) => !value)}
-          className="inline-flex touch-manipulation items-center gap-2 rounded-full bg-slate-800/90 px-4 py-2 text-sm font-medium text-slate-100 shadow-lg ring-1 ring-slate-700/40 backdrop-blur hover:bg-slate-700"
-          aria-pressed={audioEnabled}
-          title="Toggle audio"
-        >
-          <span
-            className={[
-              "h-2.5 w-2.5 rounded-full",
-              audioEnabled ? "bg-emerald-400" : "bg-slate-500",
-            ].join(" ")}
-            aria-hidden="true"
-          />
-          Audio {audioEnabled ? "On" : "Off"}
-        </button>
-
-	        <button
-	          type="button"
-	          onClick={() => setAnswerMode((mode) => (mode === "en" ? "cn" : "en"))}
-	          className="inline-flex touch-manipulation items-center gap-2 rounded-full bg-slate-800/90 px-4 py-2 text-sm font-medium text-slate-100 shadow-lg ring-1 ring-slate-700/40 backdrop-blur hover:bg-slate-700"
-	          aria-pressed={answerMode === "cn"}
-	          title="Toggle answers between English and Chinese"
-	        >
-	          <span
-	            className={[
-	              "h-2.5 w-2.5 rounded-full",
-	              answerMode === "cn" ? "bg-sky-400" : "bg-amber-300",
-	            ].join(" ")}
-	            aria-hidden="true"
-	          />
-	          Answers {answerMode === "cn" ? "CN" : "EN"}
-	        </button>
-      </div>
-
-      {streakFlash ? (
-        <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center">
-          <div
-            key={streakFlash.token}
-            className="animate-[streak-flash_650ms_cubic-bezier(0.2,0.9,0.2,1)] rounded-3xl bg-slate-950/35 px-8 py-5 text-center shadow-2xl ring-1 ring-slate-200/10 backdrop-blur"
-          >
-            <div className="text-7xl font-extrabold tracking-tight text-amber-200">
-              {streakFlash.value}
-            </div>
+            <p className="mt-6 text-xs text-slate-400">
+              Audio note: browsers require one tap inside an app before speech will play.
+            </p>
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
