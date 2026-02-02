@@ -2,6 +2,10 @@
 
 A tiny Chinese character multiple-choice game (React + TypeScript + Tailwind), built as static HTML/CSS/JS.
 
+## License
+
+Apache-2.0 (see `LICENSE`).
+
 ## Local dev
 
 ```bash
@@ -24,4 +28,3 @@ In GitHub:
 
 1. Repo Settings → Pages
 2. Set Source to **GitHub Actions**
-
