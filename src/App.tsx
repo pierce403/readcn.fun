@@ -99,7 +99,7 @@ export default function App() {
             </div>
 
             <p className="mt-6 text-xs text-slate-400">
-              Audio note: browsers require one tap inside an app before speech will play.
+              Audio note: your first tap (opening an app) unlocks speech in most browsers.
             </p>
           </div>
         </div>
