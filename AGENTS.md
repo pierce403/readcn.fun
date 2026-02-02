@@ -38,7 +38,7 @@
 
 ## Start behavior
 
-- The game auto-starts on page load (no Start button).
+- The game shows a Start button first to satisfy browser audio requirements (user gesture).
 
 ## Words dataset
 
