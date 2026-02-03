@@ -1,6 +1,7 @@
 import HanziWriter, { type StrokeData } from "hanzi-writer";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { UNIT2_WRITE_WORDS, type Word } from "./data/unit2";
+import { UnitSelector } from "../../components/UnitSelector";
+import { getWriteWordsForUnits, type UnitId, type Word } from "../../data/words";
 import { burstConfetti } from "../../lib/confetti";
 import { shuffleInPlace } from "../../lib/random";
 import { playDing, playPop, playTada } from "../../lib/sfx";
@@ -14,9 +15,12 @@ const AUDIO_STORAGE_KEY = "learncn.write.audioEnabled";
 
 const PROMPT_ZH = "这个字怎么写？";
 const STREAK_MILESTONE = 10;
+const UNLOCK_UNIT_2_STREAK = 10;
+const UNLOCK_UNIT_3_STREAK = 20;
 const CELEBRATION_STEP_MS = 260;
 const CELEBRATION_BUFFER_MS = 220;
 const NEXT_DELAY_MS = 900;
+const NEXT_CHARACTER_DELAY_MS = 520;
 const FLASH_DURATION_MS = 650;
 
 function loadStoredBool(key: string, fallback: boolean): boolean {
@@ -42,15 +46,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function makeDeck(previousWordId: string | null): string[] {
-  const ids = UNIT2_WRITE_WORDS.map((word) => word.id);
-  shuffleInPlace(ids);
+function makeDeck(previousWordId: string | null, ids: string[]): string[] {
+  const deck = [...ids];
+  shuffleInPlace(deck);
 
-  if (previousWordId && ids.length > 1 && ids[ids.length - 1] === previousWordId) {
-    [ids[ids.length - 1], ids[ids.length - 2]] = [ids[ids.length - 2], ids[ids.length - 1]];
+  if (previousWordId && deck.length > 1 && deck[deck.length - 1] === previousWordId) {
+    [deck[deck.length - 1], deck[deck.length - 2]] = [deck[deck.length - 2], deck[deck.length - 1]];
   }
 
-  return ids;
+  return deck;
 }
 
 function computeTotalStrokesFallback(strokeData: StrokeData): number {
@@ -58,10 +62,20 @@ function computeTotalStrokesFallback(strokeData: StrokeData): number {
 }
 
 export default function WriteApp({ onHome }: WriteAppProps) {
-  const wordsById = useMemo<Record<string, Word>>(
-    () => Object.fromEntries(UNIT2_WRITE_WORDS.map((word) => [word.id, word])) as Record<string, Word>,
-    [],
-  );
+  const [selectedUnits, setSelectedUnits] = useState<UnitId[]>([1]);
+  const [maxUnlockedUnit, setMaxUnlockedUnit] = useState<UnitId>(1);
+  const lastUnlockedRef = useRef<UnitId>(1);
+
+  const activeWords = useMemo(() => getWriteWordsForUnits(selectedUnits), [selectedUnits]);
+  const activeWordIds = useMemo(() => activeWords.map((word) => word.id), [activeWords]);
+  const activeWordIdsKey = useMemo(() => activeWordIds.join("|"), [activeWordIds]);
+
+  const wordsById = useMemo<Record<string, Word>>(() => {
+    return Object.fromEntries(activeWords.map((word) => [word.id, word])) as Record<string, Word>;
+  }, [activeWords]);
+
+  const activeWordIdsRef = useRef<string[]>(activeWordIds);
+  const wordsByIdRef = useRef<Record<string, Word>>(wordsById);
 
   const [started, setStarted] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(() => loadStoredBool(AUDIO_STORAGE_KEY, true));
@@ -72,6 +86,7 @@ export default function WriteApp({ onHome }: WriteAppProps) {
   }, [audioEnabled]);
 
   const [word, setWord] = useState<Word | null>(null);
+  const [characterIndex, setCharacterIndex] = useState(0);
   const [quizKey, setQuizKey] = useState(0);
   const [totalStrokes, setTotalStrokes] = useState<number | null>(null);
   const [strokeProgress, setStrokeProgress] = useState<{ done: number; total: number } | null>(null);
@@ -98,7 +113,29 @@ export default function WriteApp({ onHome }: WriteAppProps) {
   const nextStrokeNumRef = useRef<number>(0);
   const [boardEl, setBoardEl] = useState<HTMLDivElement | null>(null);
   const [boardSize, setBoardSize] = useState(0);
-  const lastPromptedWordIdRef = useRef<string | null>(null);
+  const lastPromptedKeyRef = useRef<string | null>(null);
+
+  const wordCharacters = useMemo(() => (word ? Array.from(word.hanzi) : []), [word?.id]);
+  const currentCharacter = wordCharacters[characterIndex] ?? null;
+
+  useEffect(() => {
+    activeWordIdsRef.current = activeWordIds;
+  }, [activeWordIdsKey]);
+
+  useEffect(() => {
+    wordsByIdRef.current = wordsById;
+  }, [wordsById]);
+
+  function toggleUnit(unit: UnitId): void {
+    if (unit > maxUnlockedUnit) return;
+    setSelectedUnits((prev) => {
+      const has = prev.includes(unit);
+      const next = has ? prev.filter((u) => u !== unit) : [...prev, unit];
+      if (next.length === 0) return prev;
+      next.sort((a, b) => a - b);
+      return next;
+    });
+  }
 
   function clearNextTimeout(): void {
     if (nextTimeoutRef.current === null) return;
@@ -140,18 +177,19 @@ export default function WriteApp({ onHome }: WriteAppProps) {
     stopSpeech();
     hadMistakeThisWordRef.current = false;
     nextStrokeNumRef.current = 0;
+    setCharacterIndex(0);
     setTotalStrokes(null);
     setStrokeProgress(null);
     setMistakePulse(null);
 
     if (deckRef.current.length === 0) {
-      deckRef.current = makeDeck(lastWordIdRef.current);
+      deckRef.current = makeDeck(lastWordIdRef.current, activeWordIdsRef.current);
     }
 
     const nextId = deckRef.current.pop();
     if (!nextId) return null;
     lastWordIdRef.current = nextId;
-    const next = wordsById[nextId];
+    const next = wordsByIdRef.current[nextId];
     if (!next) return null;
 
     setWord(next);
@@ -177,25 +215,26 @@ export default function WriteApp({ onHome }: WriteAppProps) {
     lastCelebratedStreakRef.current = 0;
     hadMistakeThisWordRef.current = false;
     lastWordIdRef.current = null;
-    deckRef.current = makeDeck(null);
+    deckRef.current = makeDeck(null, activeWordIdsRef.current);
     const first = nextWord();
-    if (first) speakPrompt(first);
+    if (first) speakPrompt(Array.from(first.hanzi)[0] ?? first.hanzi, `${first.id}:0`);
   }
 
   useEffect(() => {
     start();
   }, []);
 
-  function speakPrompt(next: Word): void {
+  function speakPrompt(character: string, promptKey: string): void {
     if (!audioEnabledRef.current) return;
     stopSpeech();
-    lastPromptedWordIdRef.current = next.id;
-    void speakChineseSequence([PROMPT_ZH, next.hanzi], { rate: 0.95 });
+    lastPromptedKeyRef.current = promptKey;
+    void speakChineseSequence([PROMPT_ZH, character], { rate: 0.95 });
   }
 
   function replayPrompt(): void {
     if (!word) return;
-    speakPrompt(word);
+    if (!currentCharacter) return;
+    speakPrompt(currentCharacter, `${word.id}:${characterIndex}`);
   }
 
   function hintStroke(): void {
@@ -213,6 +252,7 @@ export default function WriteApp({ onHome }: WriteAppProps) {
 
   function resetWord(): void {
     hadMistakeThisWordRef.current = true;
+    setCharacterIndex(0);
     setQuizKey((key) => key + 1);
   }
 
@@ -252,14 +292,47 @@ export default function WriteApp({ onHome }: WriteAppProps) {
   useEffect(() => {
     if (!started) return;
     if (!word) return;
+    if (!currentCharacter) return;
     if (!audioEnabledRef.current) return;
-    if (lastPromptedWordIdRef.current === word.id) return;
-    speakPrompt(word);
-  }, [started, word?.id]);
+    const promptKey = `${word.id}:${characterIndex}`;
+    if (lastPromptedKeyRef.current === promptKey) return;
+    speakPrompt(currentCharacter, promptKey);
+  }, [started, word?.id, currentCharacter, characterIndex]);
+
+  useEffect(() => {
+    if (streak >= UNLOCK_UNIT_3_STREAK) {
+      setMaxUnlockedUnit((current) => (current >= 3 ? current : 3));
+      return;
+    }
+    if (streak >= UNLOCK_UNIT_2_STREAK) {
+      setMaxUnlockedUnit((current) => (current >= 2 ? current : 2));
+    }
+  }, [streak]);
+
+  useEffect(() => {
+    const prev = lastUnlockedRef.current;
+    if (maxUnlockedUnit <= prev) return;
+    lastUnlockedRef.current = maxUnlockedUnit;
+    setSelectedUnits((units) => {
+      const next = new Set<UnitId>(units);
+      for (let u = prev + 1; u <= maxUnlockedUnit; u++) {
+        next.add(u as UnitId);
+      }
+      return Array.from(next).sort((a, b) => a - b);
+    });
+  }, [maxUnlockedUnit]);
+
+  useEffect(() => {
+    if (!started) return;
+    deckRef.current = makeDeck(lastWordIdRef.current, activeWordIds);
+    if (nextTimeoutRef.current !== null) return;
+    nextWord();
+  }, [activeWordIdsKey]);
 
   useEffect(() => {
     if (!started) return;
     if (!word) return;
+    if (!currentCharacter) return;
     if (boardSize <= 0) return;
     if (!boardEl) return;
 
@@ -270,7 +343,7 @@ export default function WriteApp({ onHome }: WriteAppProps) {
     boardEl.innerHTML = "";
 
     const padding = clamp(Math.round(boardSize * 0.08), 10, 28);
-    const writer = HanziWriter.create(boardEl, word.hanzi, {
+    const writer = HanziWriter.create(boardEl, currentCharacter, {
       width: boardSize,
       height: boardSize,
       padding,
@@ -287,7 +360,6 @@ export default function WriteApp({ onHome }: WriteAppProps) {
     });
 
     writerRef.current = writer;
-    hadMistakeThisWordRef.current = false;
     nextStrokeNumRef.current = 0;
     setTotalStrokes(null);
     setStrokeProgress(null);
@@ -327,7 +399,23 @@ export default function WriteApp({ onHome }: WriteAppProps) {
         });
       },
       onComplete: ({ totalMistakes }) => {
-        const didHaveMistake = hadMistakeThisWordRef.current || totalMistakes > 0;
+        hadMistakeThisWordRef.current = hadMistakeThisWordRef.current || totalMistakes > 0;
+        const isLastCharacter = characterIndex >= wordCharacters.length - 1;
+
+        if (!isLastCharacter) {
+          const nextIndex = Math.min(characterIndex + 1, wordCharacters.length - 1);
+          const nextCharacter = wordCharacters[nextIndex] ?? null;
+          if (audioEnabledRef.current) playDing();
+          nextTimeoutRef.current = window.setTimeout(() => {
+            if (nextCharacter && audioEnabledRef.current) {
+              speakPrompt(nextCharacter, `${word.id}:${nextIndex}`);
+            }
+            setCharacterIndex(nextIndex);
+          }, NEXT_CHARACTER_DELAY_MS);
+          return;
+        }
+
+        const didHaveMistake = hadMistakeThisWordRef.current;
         const nextStreak = didHaveMistake ? 0 : streakRef.current + 1;
         const celebrationBursts =
           nextStreak > 0 && nextStreak % STREAK_MILESTONE === 0 ? nextStreak / STREAK_MILESTONE : 0;
@@ -354,7 +442,7 @@ export default function WriteApp({ onHome }: WriteAppProps) {
       canceled = true;
       writer.cancelQuiz();
     };
-  }, [started, word?.id, boardSize, quizKey, boardEl]);
+  }, [started, word?.id, currentCharacter, characterIndex, wordCharacters.length, boardSize, quizKey, boardEl]);
 
   useEffect(() => {
     return () => {
@@ -400,6 +488,12 @@ export default function WriteApp({ onHome }: WriteAppProps) {
               <p className="text-sm text-slate-300">
                 Listen, then write the character with correct stroke order.
               </p>
+              <div className="mt-3">
+                <div className="text-xs font-medium text-slate-400">Units</div>
+                <div className="mt-2">
+                  <UnitSelector selectedUnits={selectedUnits} maxUnlockedUnit={maxUnlockedUnit} onToggle={toggleUnit} />
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -427,6 +521,12 @@ export default function WriteApp({ onHome }: WriteAppProps) {
                 </div>
 
                 <div className="mt-1 text-sm text-slate-400">{word.pinyin}</div>
+
+                {wordCharacters.length > 1 ? (
+                  <div className="mt-1 text-xs text-slate-500">
+                    Character {characterIndex + 1} / {wordCharacters.length}
+                  </div>
+                ) : null}
 
                 <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
                   <button

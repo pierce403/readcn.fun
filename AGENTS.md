@@ -20,6 +20,7 @@
 ## Read app
 
 - Shows one Chinese character (`hanzi`) and 3 choices.
+- Units: starts with Unit 1; unlocks Unit 2 at 10 streak and Unit 3 at 20; selector lets you toggle the active unit pool.
 - Answer modes:
   - `Answers CN`: choices are **Pinyin**
   - `Answers EN`: choices are **English**
@@ -42,8 +43,10 @@
 ## Write app
 
 - Guided stroke-order practice using `hanzi-writer` (see `package.json`).
-- Dataset: `src/apps/write/data/unit2.ts` (Unit 2 items marked with (W)).
+- Dataset: `src/data/words.ts` (Unit 1–3 write words).
+- Units: starts with Unit 1; unlocks Unit 2 at 10 perfect streak and Unit 3 at 20; selector lets you toggle the active unit pool.
 - Any mistake during the word resets the “perfect streak” to `0`.
+- Multi-character prompts (e.g. 爸爸/妈妈) advance character-by-character.
 - Audio requires a user gesture (the tap that opens the app is usually enough).
 
 ## Celebration (both apps)

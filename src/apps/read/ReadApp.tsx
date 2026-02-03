@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { WORDS, type Word } from "../../data/words";
+import { getReadWordsForUnits, type UnitId, type Word } from "../../data/words";
+import { UnitSelector } from "../../components/UnitSelector";
 import { burstConfetti } from "../../lib/confetti";
 import { shuffleInPlace } from "../../lib/random";
 import { playDing, playPop, playTada } from "../../lib/sfx";
@@ -27,6 +28,8 @@ const AUDIO_STORAGE_KEY = "learncn.read.audioEnabled";
 const ANSWER_MODE_STORAGE_KEY = "learncn.read.answerMode";
 const PROMPT_ZH = "这是什么字？";
 const STREAK_MILESTONE = 10;
+const UNLOCK_UNIT_2_STREAK = 10;
+const UNLOCK_UNIT_3_STREAK = 20;
 const CELEBRATION_STEP_MS = 260;
 const CELEBRATION_BUFFER_MS = 220;
 const FLASH_DURATION_MS = 650;
@@ -79,8 +82,8 @@ function parseAnswerMode(value: string): AnswerMode {
   return "en";
 }
 
-function buildQuestion(word: Word): Question {
-  const candidates = WORDS.filter((candidate) => candidate.id !== word.id);
+function buildQuestion(word: Word, words: Word[]): Question {
+  const candidates = words.filter((candidate) => candidate.id !== word.id);
   shuffleInPlace(candidates);
 
   const distractors: Word[] = [];
@@ -115,22 +118,34 @@ function buildQuestion(word: Word): Question {
   };
 }
 
-function makeDeck(previousWordId: string | null): string[] {
-  const ids = WORDS.map((word) => word.id);
-  shuffleInPlace(ids);
+function makeDeck(previousWordId: string | null, ids: string[]): string[] {
+  const deck = [...ids];
+  shuffleInPlace(deck);
 
-  if (previousWordId && ids.length > 1 && ids[ids.length - 1] === previousWordId) {
-    [ids[ids.length - 1], ids[ids.length - 2]] = [ids[ids.length - 2], ids[ids.length - 1]];
+  if (previousWordId && deck.length > 1 && deck[deck.length - 1] === previousWordId) {
+    [deck[deck.length - 1], deck[deck.length - 2]] = [deck[deck.length - 2], deck[deck.length - 1]];
   }
 
-  return ids;
+  return deck;
 }
 
 export default function ReadApp({ onHome }: ReadAppProps) {
-  const wordsById = useMemo<Record<string, Word>>(
-    () => Object.fromEntries(WORDS.map((word) => [word.id, word])) as Record<string, Word>,
-    [],
-  );
+  const [selectedUnits, setSelectedUnits] = useState<UnitId[]>([1]);
+  const [maxUnlockedUnit, setMaxUnlockedUnit] = useState<UnitId>(1);
+  const lastUnlockedRef = useRef<UnitId>(1);
+
+  const activeWords = useMemo(() => getReadWordsForUnits(selectedUnits), [selectedUnits]);
+  const activeWordIds = useMemo(() => activeWords.map((word) => word.id), [activeWords]);
+  const activeWordIdsKey = useMemo(() => activeWordIds.join("|"), [activeWordIds]);
+
+  const wordsById = useMemo<Record<string, Word>>(() => {
+    return Object.fromEntries(activeWords.map((word) => [word.id, word])) as Record<string, Word>;
+  }, [activeWords]);
+
+  const activeWordsRef = useRef<Word[]>(activeWords);
+  const activeWordIdsRef = useRef<string[]>(activeWordIds);
+  const wordsByIdRef = useRef<Record<string, Word>>(wordsById);
+  const unitToggleByUserRef = useRef(false);
 
   const [started, setStarted] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(() => loadStoredBool(AUDIO_STORAGE_KEY, true));
@@ -159,6 +174,30 @@ export default function ReadApp({ onHome }: ReadAppProps) {
   const streakFlashTokenRef = useRef<number>(0);
   const celebrationTimeoutsRef = useRef<number[]>([]);
   const skipNextAutoPromptRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    activeWordsRef.current = activeWords;
+  }, [activeWords]);
+
+  useEffect(() => {
+    activeWordIdsRef.current = activeWordIds;
+  }, [activeWordIdsKey]);
+
+  useEffect(() => {
+    wordsByIdRef.current = wordsById;
+  }, [wordsById]);
+
+  function toggleUnit(unit: UnitId): void {
+    if (unit > maxUnlockedUnit) return;
+    unitToggleByUserRef.current = true;
+    setSelectedUnits((prev) => {
+      const has = prev.includes(unit);
+      const next = has ? prev.filter((u) => u !== unit) : [...prev, unit];
+      if (next.length === 0) return prev;
+      next.sort((a, b) => a - b);
+      return next;
+    });
+  }
 
   function clearNextTimeout(): void {
     if (nextTimeoutRef.current === null) return;
@@ -191,17 +230,17 @@ export default function ReadApp({ onHome }: ReadAppProps) {
     hadMistakeThisQuestionRef.current = false;
 
     if (deckRef.current.length === 0) {
-      deckRef.current = makeDeck(lastWordIdRef.current);
+      deckRef.current = makeDeck(lastWordIdRef.current, activeWordIdsRef.current);
     }
 
     const nextWordId = deckRef.current.pop();
     if (!nextWordId) return;
 
     lastWordIdRef.current = nextWordId;
-    const word = wordsById[nextWordId];
+    const word = wordsByIdRef.current[nextWordId];
     if (!word) return;
 
-    setQuestion(buildQuestion(word));
+    setQuestion(buildQuestion(word, activeWordsRef.current));
     setOptionStates({});
     setLocked(false);
   }
@@ -217,7 +256,7 @@ export default function ReadApp({ onHome }: ReadAppProps) {
     lastCelebratedStreakRef.current = 0;
     hadMistakeThisQuestionRef.current = false;
     lastWordIdRef.current = null;
-    deckRef.current = makeDeck(null);
+    deckRef.current = makeDeck(null, activeWordIdsRef.current);
     nextQuestion();
   }
 
@@ -232,6 +271,38 @@ export default function ReadApp({ onHome }: ReadAppProps) {
   useEffect(() => {
     startGame();
   }, []);
+
+  useEffect(() => {
+    if (streak >= UNLOCK_UNIT_3_STREAK) {
+      setMaxUnlockedUnit((current) => (current >= 3 ? current : 3));
+      return;
+    }
+    if (streak >= UNLOCK_UNIT_2_STREAK) {
+      setMaxUnlockedUnit((current) => (current >= 2 ? current : 2));
+    }
+  }, [streak]);
+
+  useEffect(() => {
+    const prev = lastUnlockedRef.current;
+    if (maxUnlockedUnit <= prev) return;
+    lastUnlockedRef.current = maxUnlockedUnit;
+    setSelectedUnits((units) => {
+      const next = new Set<UnitId>(units);
+      for (let u = prev + 1; u <= maxUnlockedUnit; u++) {
+        next.add(u as UnitId);
+      }
+      return Array.from(next).sort((a, b) => a - b);
+    });
+  }, [maxUnlockedUnit]);
+
+  useEffect(() => {
+    if (!started) return;
+    deckRef.current = makeDeck(lastWordIdRef.current, activeWordIds);
+    const wasUserToggle = unitToggleByUserRef.current;
+    unitToggleByUserRef.current = false;
+    if (!wasUserToggle && (locked || nextTimeoutRef.current !== null)) return;
+    nextQuestion();
+  }, [activeWordIdsKey]);
 
   function playPromptAudio(): void {
     if (!question) return;
@@ -354,6 +425,12 @@ export default function ReadApp({ onHome }: ReadAppProps) {
                   ? "Pick the correct pinyin for the character."
                   : "Pick the English meaning of the character."}
               </p>
+              <div className="mt-3">
+                <div className="text-xs font-medium text-slate-400">Units</div>
+                <div className="mt-2">
+                  <UnitSelector selectedUnits={selectedUnits} maxUnlockedUnit={maxUnlockedUnit} onToggle={toggleUnit} />
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
