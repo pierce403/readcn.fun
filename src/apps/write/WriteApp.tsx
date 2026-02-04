@@ -129,6 +129,14 @@ function firstHanziCharacter(text: string): string | null {
   return chars.length > 0 ? chars[0] : null;
 }
 
+function getPracticeCharacters(text: string): string[] {
+  const chars = Array.from(text.trim());
+  if (chars.length <= 1) return chars;
+  const first = chars[0];
+  if (first && chars.every((char) => char === first)) return [first];
+  return chars;
+}
+
 function computeTotalStrokesFallback(strokeData: StrokeData): number {
   return Math.max(1, strokeData.strokeNum + strokeData.strokesRemaining + 1);
 }
@@ -191,7 +199,7 @@ export default function WriteApp({ onHome }: WriteAppProps) {
   const lastPromptedKeyRef = useRef<string | null>(null);
   const lastCompletedCharacterRef = useRef<string | null>(null);
 
-  const wordCharacters = useMemo(() => (word ? Array.from(word.hanzi) : []), [word?.id]);
+  const wordCharacters = useMemo(() => (word ? getPracticeCharacters(word.hanzi) : []), [word?.id]);
   const currentCharacter = wordCharacters[characterIndex] ?? null;
 
   useEffect(() => {
