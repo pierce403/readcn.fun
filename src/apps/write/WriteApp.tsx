@@ -124,6 +124,11 @@ function makeDeck(previousWordId: string | null, ids: string[]): string[] {
   return deck;
 }
 
+function firstHanziCharacter(text: string): string | null {
+  const chars = Array.from(text.trim());
+  return chars.length > 0 ? chars[0] : null;
+}
+
 function computeTotalStrokesFallback(strokeData: StrokeData): number {
   return Math.max(1, strokeData.strokeNum + strokeData.strokesRemaining + 1);
 }
@@ -184,6 +189,7 @@ export default function WriteApp({ onHome }: WriteAppProps) {
   const [boardEl, setBoardEl] = useState<HTMLDivElement | null>(null);
   const [boardSize, setBoardSize] = useState(0);
   const lastPromptedKeyRef = useRef<string | null>(null);
+  const lastCompletedCharacterRef = useRef<string | null>(null);
 
   const wordCharacters = useMemo(() => (word ? Array.from(word.hanzi) : []), [word?.id]);
   const currentCharacter = wordCharacters[characterIndex] ?? null;
@@ -242,6 +248,7 @@ export default function WriteApp({ onHome }: WriteAppProps) {
   }
 
   function nextWord(): Word | null {
+    if (currentCharacter) lastCompletedCharacterRef.current = currentCharacter;
     clearNextTimeout();
     clearCelebrationTimeouts();
     stopSpeech();
@@ -256,7 +263,31 @@ export default function WriteApp({ onHome }: WriteAppProps) {
       deckRef.current = makeDeck(lastWordIdRef.current, activeWordIdsRef.current);
     }
 
-    const nextId = deckRef.current.pop();
+    const avoidCharacter = lastCompletedCharacterRef.current;
+    const rejectedIds: string[] = [];
+    let nextId: string | undefined;
+
+    while (deckRef.current.length > 0) {
+      const candidateId = deckRef.current.pop()!;
+      const candidateWord = wordsByIdRef.current[candidateId];
+      const candidateFirstChar = candidateWord ? firstHanziCharacter(candidateWord.hanzi) : null;
+
+      if (!avoidCharacter || !candidateFirstChar || candidateFirstChar !== avoidCharacter) {
+        nextId = candidateId;
+        break;
+      }
+
+      rejectedIds.push(candidateId);
+    }
+
+    if (!nextId && rejectedIds.length > 0) {
+      nextId = rejectedIds.pop();
+    }
+
+    if (rejectedIds.length > 0) {
+      deckRef.current.unshift(...rejectedIds);
+    }
+
     if (!nextId) return null;
     lastWordIdRef.current = nextId;
     const next = wordsByIdRef.current[nextId];
@@ -271,6 +302,7 @@ export default function WriteApp({ onHome }: WriteAppProps) {
     clearNextTimeout();
     clearCelebrationTimeouts();
     stopSpeech();
+    lastCompletedCharacterRef.current = null;
 
     setStarted(true);
     setCorrectCount(0);
